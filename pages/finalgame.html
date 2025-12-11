@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Fruit Ninja Game</title>
+<style>
+  body {
+    margin: 0;
+    background: #f0f0f0;
+    font-family: Arial;
+    display: flex;
+  }
+  #gameContainer {
+    position: relative;
+    flex: 1;
+  }
+  canvas {
+    background: #aee3ff;
+    display: block;
+  }
+  #sidebar {
+    width: 260px;
+    background: #fff;
+    padding: 15px;
+    border-left: 3px solid #ccc;
+  }
+  .btn {
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 10px;
+    font-size: 16px;
+    background: #4caf50;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+  }
+  #timer {
+    font-size: 24px;
+    margin-top: 15px;
+  }
+  #gameOver {
+    position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: rgba(255,0,0,0.8);
+    color: white;
+    padding: 20px;
+    font-size: 32px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="gameCanvas" width="900" height="600"></canvas>
+  <div id="gameOver">GAME OVER</div>
+</div>
+<div id="sidebar">
+  <button id="startBtn" class="btn">Start</button>
+  <button id="pauseBtn" class="btn">Pause</button>
+  <button id="stopBtn" class="btn">Stop</button>
+  <div id="timer">0.00</div>
+
+  <h3>Fruit Sliced:</h3>
+  <div id="fruitCount" style="font-size:28px;margin-top:5px">0</div>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+let W = canvas.width;
+let H = canvas.height;
+
+let running = false;
+let paused = false;
+let startTime = 0;
+let timerInterval = null;
+
+let fruits = [];
+let fruitCount = 0;
+let halves = [];
+let bombs = [];
+
+function rand(min, max) { return Math.random() * (max - min) + min; }
+
+function spawnObject() {
+  if (!running || paused) return;
+  let x = rand(60, W - 60);
+  let size = rand(30, 50);
+  let y = H + size;
+  let vx = rand(-150, 150);
+  let vy = rand(-600, -400);
+
+  if (Math.random() < 0.15) {
+    bombs.push({x, y, vx, vy, size, rot: rand(0, 6)});
+  } else {
+    fruits.push({x, y, vx, vy, size, rot: rand(0, 6)});
+  }
+}
+setInterval(spawnObject, 700);
+
+function splitFruit(f) {
+  let half1 = {...f, vx: f.vx - 200, vy: f.vy - 200, life: 800};
+  let half2 = {...f, vx: f.vx + 200, vy: f.vy - 200, life: 800};
+  halves.push(half1, half2);
+}
+
+function gameOver() {
+  running = false;
+  paused = false;
+  clearInterval(timerInterval);
+  document.getElementById("gameOver").style.display = "block";
+}
+
+function update(dt) {
+  function move(obj) {
+    obj.x += obj.vx * dt;
+    obj.y += obj.vy * dt;
+    obj.vy += 900 * dt;
+    obj.rot += 0.1;
+  }
+
+  fruits.forEach(move);
+  bombs.forEach(move);
+  halves.forEach(move);
+
+  halves = halves.filter(h => (performance.now() - startTime) < h.life + 2000);
+}
+
+let mouse = {x:0, y:0, px:0, py:0};
+canvas.addEventListener("mousemove", e => {
+  mouse.px = mouse.x;
+  mouse.py = mouse.y;
+  mouse.x = e.offsetX;
+  mouse.y = e.offsetY;
+
+  if (!running || paused) return;
+
+  let dx = mouse.x - mouse.px;
+  let dy = mouse.y - mouse.py;
+  let dist = Math.hypot(dx, dy);
+
+  if (dist > 5) {
+    fruits = fruits.filter(f => {
+      let d = Math.hypot(f.x - mouse.x, f.y - mouse.y);
+      if (d < f.size) {
+        splitFruit(f);
+        fruitCount++;
+        document.getElementById('fruitCount').textContent = fruitCount;
+        return false;
+      }
+      return true;
+    });
+
+    bombs.forEach(b => {
+      let d = Math.hypot(b.x - mouse.x, b.y - mouse.y);
+      if (d < b.size) gameOver();
+    });
+  }
+});
+
+function draw() {
+  ctx.clearRect(0,0,W,H);
+
+  function drawFruit(f) {
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    ctx.rotate(f.rot);
+    ctx.fillStyle = "orange";
+    ctx.beginPath();
+    ctx.arc(0, 0, f.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  function drawHalf(h) {
+    ctx.save();
+    ctx.translate(h.x, h.y);
+    ctx.rotate(h.rot);
+    ctx.fillStyle = "#ffcc66";
+    ctx.beginPath();
+    ctx.arc(0,0, h.size, Math.PI/2, -Math.PI/2);
+    ctx.fill();
+    ctx.restore();
+  }
+  function drawBomb(b) {
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(b.rot);
+    ctx.fillStyle = "black";
+    ctx.beginPath();
+    ctx.arc(0,0,b.size,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  fruits.forEach(drawFruit);
+  halves.forEach(drawHalf);
+  bombs.forEach(drawBomb);
+}
+
+let last = 0;
+function loop(ts) {
+  let dt = (ts - last) / 1000;
+  last = ts;
+  if (running && !paused) update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// BUTTONS
+startBtn.onclick = () => {
+  fruitCount = 0;
+  document.getElementById('fruitCount').textContent = 0;
+  running = true;
+  paused = false;
+  fruits = [];
+  bombs = [];
+  halves = [];
+  document.getElementById("gameOver").style.display = "none";
+  startTime = performance.now();
+  timerInterval = setInterval(() => {
+    document.getElementById("timer").textContent = ((performance.now() - startTime)/1000).toFixed(2);
+  }, 30);
+};
+
+pauseBtn.onclick = () => {
+  paused = !paused;
+};
+
+stopBtn.onclick = () => {
+  running = false;
+  paused = false;
+  fruits=[];bombs=[];halves=[];
+  clearInterval(timerInterval);
+};
+</script>
+</body>
+</html>
